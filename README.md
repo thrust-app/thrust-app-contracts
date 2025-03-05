@@ -269,39 +269,74 @@
 
 Before getting started with thrust_anchor, ensure your runtime environment meets the following requirements:
 
-- **Programming Language:** Rust
-- **Package Manager:** Cargo, Npm
+- **Programming Language:** Rust, Anchor, Solana
+```sh
+❯ sudo apt install curl
+```
+```sh
+❯ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+```sh
+❯ cargo install --git https://github.com/coral-xyz/anchor --tag v0.29.0 anchor-cli --locked
+```
+```sh
+❯ sh -c "$(curl -sSfL https://release.solana.com/v1.18.4/install)" 
+```
 
+- **Package Manager:** Cargo, Npm
+```sh
+❯ sudo apt install cargo
+```
+```sh
+❯ sudo apt update
+```
+```sh
+❯ sudo apt install ca-certificates curl gnupg
+```
+```sh
+sudo mkdir -p /etc/apt/keyrings
+```
+```sh
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+```
+```sh
+NODE_MAJOR=20
+```
+```sh
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+```
+```sh
+sudo apt update
+```
+```sh
+sudo apt install nodejs
+```
+You can use this links.
+https://itsfoss.com/install-rust-cargo-ubuntu-linux/
+https://www.anchor-lang.com/docs/installation
+https://docs.solanalabs.com/cli/install
+https://linuxize.com/post/how-to-install-node-js-on-ubuntu-20-04/
+https://phoenixnap.com/kb/install-vscode-ubuntu
 
 ###  Installation
 
 Install thrust_anchor using one of the following methods:
 
 **Build from source:**
+1. Install Build Environment:
+Follow This Installation Guide -> **[https://solana.com/docs/intro/installation](https://github.com/lxmnsingh/solana-fun-contracts/discussions)**
 
-1. Clone the thrust_anchor repository:
+2. Clone the thrust_anchor repository:
 ```sh
 ❯ git clone https://github.com/lxmnsingh/solana-fun-contracts
 ```
 
-2. Navigate to the project directory:
+3. Navigate to the project directory:
 ```sh
 ❯ cd thrust_anchor
 ```
 
-3. Install the project dependencies:
-
-**Using `cargo`** &nbsp; [<img align="center" src="https://img.shields.io/badge/Rust-000000.svg?style={badge_style}&logo=rust&logoColor=white" />](https://www.rust-lang.org/)
-
-```sh
-❯ cargo build
-```
-
-**Using `npm`** &nbsp; [<img align="center" src="https://img.shields.io/badge/Node.js-000000.svg?style={badge_style}&logo=node.js&logoColor=white" />](https://nodejs.org/)
-
-```sh
-❯ npm install
-```
+4. Install the project dependencies:
 
 **Using `anchor`** &nbsp; [<img align="center" src="https://img.shields.io/badge/Anchor-000000.svg?style={badge_style}&logo=anchor&logoColor=white" />](https://project-serum.github.io/anchor/)
 
@@ -310,17 +345,26 @@ Install thrust_anchor using one of the following methods:
 ```
 
 ###  Deployment
-**Using `solana`** &nbsp; 
+**Using `anchor`** &nbsp; [<img align="center" src="https://img.shields.io/badge/Anchor-000000.svg?style={badge_style}&logo=anchor&logoColor=white" />](https://project-serum.github.io/anchor/)
 ```sh
-❯ solana program deploy ./target/deploy/thrust_app.so
+❯ anchor deploy
 ```
+Get program id by this command
+```sh
+anchor keys list
+```
+
+```sh
+❯ anchor upgrade --program-id <programId> <so file path>
+```
+EX: anchor upgrade --program-id 3CoU3M7s8zMQzt3mS6rex11xKBgBd4P58Efk11TZuvct ./target/deploy/wmp_staking.so
 
 ###  Testing
 Run the test suite using the following command:
-**Using `cargo`** &nbsp; [<img align="center" src="https://img.shields.io/badge/Rust-000000.svg?style={badge_style}&logo=rust&logoColor=white" />](https://www.rust-lang.org/)
+**Using `anchor`** &nbsp; [<img align="center" src="https://img.shields.io/badge/Anchor-000000.svg?style={badge_style}&logo=anchor&logoColor=white" />](https://project-serum.github.io/anchor/)
 
 ```sh
-❯ cargo test
+❯ anchor test
 ```
 
 ---
