@@ -50,6 +50,7 @@ describe("Test Initialize", () => {
       .initMainState()
       .accounts({
         owner: program.provider.publicKey,
+        verifySignerPubkey: program.provider.publicKey,
         mainState: mainStatePDA[0],
         systemProgram: web3.SystemProgram.programId,
       })
@@ -82,9 +83,11 @@ describe("Test Initialize", () => {
         initRealBaseReserves: new BN(800_000_000 * 1000_000),
         initVirtBaseReserves: new BN(200_000_000 * 1000_000),
         initVirtQuoteReserves: new BN(24 * 1000_000_000),
+        solPrice: new BN(160_000_000_000),
       })
       .accounts({
         owner: program.provider.publicKey,
+        verifySignerPubkey: program.provider.publicKey,
         mainState: mainStatePDA[0],
       })
       .rpc();
@@ -151,9 +154,10 @@ describe("Test Initialize", () => {
       program.programId
     );
     const tx = await program.methods
-      .updateSolPrice(new BN(160_000_000_000))
+      .updateSolPrice(new BN(130_000_000_000))
       .accounts({
         owner: program.provider.publicKey,
+        verifySignerPubkey: program.provider.publicKey,
         mainState: mainStatePDA[0],
       })
       .rpc();
@@ -165,7 +169,7 @@ describe("Test Initialize", () => {
     );
     assert.equal(
       deserializedAccountData.solPrice,
-      160_000_000_000,
+      130_000_000_000,
       "sol price set failed"
     );
   });
@@ -220,6 +224,14 @@ describe("Test Create Pool", () => {
         mintSymbol: "BBB",
         mintUri: "https://cryptologos.cc/logos/solana-sol-logo.svg",
         tradeStartTime: new BN(0),
+        taxType: {
+          higherSellTax: {
+            thresholdPercentage: new BN(3000),
+            higherTaxRate: new BN(20000),
+            standardTaxRate: new BN(5000),
+            duration: { lifetime: {} },
+          },
+        },
       })
       .accounts({
         mint: mint.publicKey,
@@ -236,23 +248,8 @@ describe("Test Create Pool", () => {
         systemProgram: web3.SystemProgram.programId,
       })
       .signers([mint]);
-    // try {
     const txHash = await builder.rpc({ commitment: "confirmed" });
     console.log(`Use 'solana confirm -v ${txHash}' to see the logs`);
-    // } catch {
-    //   const tx = await builder.transaction();
-    //   const { blockhash: recentBlockhash } =
-    //     await program.provider.connection.getLatestBlockhash("confirmed");
-    //   const message = new web3.TransactionMessage({
-    //     payerKey: program.provider.publicKey,
-    //     recentBlockhash,
-    //     instructions: tx.instructions,
-    //   }).compileToV0Message();
-    //   const txMain = new web3.VersionedTransaction(message);
-    //   txMain.sign([program.provider.wallet.payer, mint]);
-    //   const simRes = await program.provider.connection.simulateTransaction(txMain);
-    //   console.log(simRes.value);
-    // }
   });
 });
 describe("Test Buy and Sell", () => {
@@ -346,97 +343,98 @@ describe("Test Buy and Sell", () => {
     }
   });
 
-  it("sell", async () => {
-    const mainStatePDA = web3.PublicKey.findProgramAddressSync(
-      [Buffer.from(MAIN_STATE_SEED)],
-      program.programId
-    );
-    try {
-      const deserializedAccountData = await program.account.mainState.fetch(
-        mainStatePDA[0].toBase58()
-      );
-      if (deserializedAccountData.initialized == false) {
-        console.log("not initialized");
-        return;
-      }
-    } catch {}
-    const [poolState] = web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("pool"), mint.publicKey.toBuffer()],
-      program.programId
-    );
-    try {
-      const poolStateData = await program.account.poolState.fetch(
-        poolState.toBase58()
-      );
-      console.log("selling for", poolStateData.mint.toBase58());
-      if (poolStateData.mint.toBase58() != mint.publicKey.toBase58()) {
-        console.log("pool wasn't initialized");
-      }
-    } catch {
-      return;
-    }
-    const [reservePda] = web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("reserve"), mint.publicKey.toBuffer()],
-      program.programId
-    );
-    const [userState] = web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("user"), program.provider.publicKey.toBuffer()],
-      program.programId
-    );
-    const [reserveAta] = web3.PublicKey.findProgramAddressSync(
-      [
-        poolState.toBuffer(),
-        TOKEN_PROGRAM.toBuffer(),
-        mint.publicKey.toBuffer(),
-      ],
-      ASSOCIATED_TOKEN_PROGRAM
-    );
-    const [sellerBaseAta] = web3.PublicKey.findProgramAddressSync(
-      [
-        program.provider.publicKey.toBuffer(),
-        TOKEN_PROGRAM.toBuffer(),
-        mint.publicKey.toBuffer(),
-      ],
-      ASSOCIATED_TOKEN_PROGRAM
-    );
-    const deserializedAccountData = await program.account.mainState.fetch(
-      mainStatePDA[0].toBase58()
-    );
-    const builder = program.methods
-      .sell(new BN(3_000_000_000_000))
-      .accounts({
-        seller: program.provider.publicKey,
-        mainState: mainStatePDA[0],
-        feeRecipient: deserializedAccountData.feeRecipient,
-        userState,
-        referrer: web3.PublicKey.default,
-        poolState,
-        mint: mint.publicKey,
-        sellerBaseAta,
-        reservePda,
-        reserverBaseAta: reserveAta,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM,
-        tokenProgram: TOKEN_PROGRAM,
-        systemProgram: web3.SystemProgram.programId,
-      });
-    try {
-      const txHash = await builder.rpc({ commitment: "confirmed" });
-      console.log(`Use 'solana confirm -v ${txHash}' to see the logs`);
-    } catch {
-      const tx = await builder.transaction();
-      const { blockhash: recentBlockhash } =
-        await program.provider.connection.getLatestBlockhash("confirmed");
-      const message = new web3.TransactionMessage({
-        payerKey: program.provider.publicKey,
-        recentBlockhash,
-        instructions: tx.instructions,
-      }).compileToV0Message();
-      const txMain = new web3.VersionedTransaction(message);
-      txMain.sign([program.provider.wallet.payer]);
-      const simRes = await program.provider.connection.simulateTransaction(txMain);
-      console.log(simRes.value);
-    }
-  });
+  // can't test on solana playground because it doesn't provide the essential packages for signing message
+  // it("sell", async () => {
+  //   const mainStatePDA = web3.PublicKey.findProgramAddressSync(
+  //     [Buffer.from(MAIN_STATE_SEED)],
+  //     program.programId
+  //   );
+  //   try {
+  //     const deserializedAccountData = await program.account.mainState.fetch(
+  //       mainStatePDA[0].toBase58()
+  //     );
+  //     if (deserializedAccountData.initialized == false) {
+  //       console.log("not initialized");
+  //       return;
+  //     }
+  //   } catch {}
+  //   const [poolState] = web3.PublicKey.findProgramAddressSync(
+  //     [Buffer.from("pool"), mint.publicKey.toBuffer()],
+  //     program.programId
+  //   );
+  //   try {
+  //     const poolStateData = await program.account.poolState.fetch(
+  //       poolState.toBase58()
+  //     );
+  //     console.log("selling for", poolStateData.mint.toBase58());
+  //     if (poolStateData.mint.toBase58() != mint.publicKey.toBase58()) {
+  //       console.log("pool wasn't initialized");
+  //     }
+  //   } catch {
+  //     return;
+  //   }
+  //   const [reservePda] = web3.PublicKey.findProgramAddressSync(
+  //     [Buffer.from("reserve"), mint.publicKey.toBuffer()],
+  //     program.programId
+  //   );
+  //   const [userState] = web3.PublicKey.findProgramAddressSync(
+  //     [Buffer.from("user"), program.provider.publicKey.toBuffer()],
+  //     program.programId
+  //   );
+  //   const [reserveAta] = web3.PublicKey.findProgramAddressSync(
+  //     [
+  //       poolState.toBuffer(),
+  //       TOKEN_PROGRAM.toBuffer(),
+  //       mint.publicKey.toBuffer(),
+  //     ],
+  //     ASSOCIATED_TOKEN_PROGRAM
+  //   );
+  //   const [sellerBaseAta] = web3.PublicKey.findProgramAddressSync(
+  //     [
+  //       program.provider.publicKey.toBuffer(),
+  //       TOKEN_PROGRAM.toBuffer(),
+  //       mint.publicKey.toBuffer(),
+  //     ],
+  //     ASSOCIATED_TOKEN_PROGRAM
+  //   );
+  //   const deserializedAccountData = await program.account.mainState.fetch(
+  //     mainStatePDA[0].toBase58()
+  //   );
+  //   const builder = program.methods
+  //     .sell(new BN(3_000_000_000_000))
+  //     .accounts({
+  //       seller: program.provider.publicKey,
+  //       mainState: mainStatePDA[0],
+  //       feeRecipient: deserializedAccountData.feeRecipient,
+  //       userState,
+  //       referrer: web3.PublicKey.default,
+  //       poolState,
+  //       mint: mint.publicKey,
+  //       sellerBaseAta,
+  //       reservePda,
+  //       reserverBaseAta: reserveAta,
+  //       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM,
+  //       tokenProgram: TOKEN_PROGRAM,
+  //       systemProgram: web3.SystemProgram.programId,
+  //     });
+  //   try {
+  //     const txHash = await builder.rpc({ commitment: "confirmed" });
+  //     console.log(`Use 'solana confirm -v ${txHash}' to see the logs`);
+  //   } catch {
+  //     const tx = await builder.transaction();
+  //     const { blockhash: recentBlockhash } =
+  //       await program.provider.connection.getLatestBlockhash("confirmed");
+  //     const message = new web3.TransactionMessage({
+  //       payerKey: program.provider.publicKey,
+  //       recentBlockhash,
+  //       instructions: tx.instructions,
+  //     }).compileToV0Message();
+  //     const txMain = new web3.VersionedTransaction(message);
+  //     txMain.sign([program.provider.wallet.payer]);
+  //     const simRes = await program.provider.connection.simulateTransaction(txMain);
+  //     console.log(simRes.value);
+  //   }
+  // });
 });
 describe("Withdraw", () => {
   it("ending", async () => {

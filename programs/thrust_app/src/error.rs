@@ -28,4 +28,13 @@ pub enum ThrustAppError {
 
     #[msg("BondingCurve complete")]
     BondingCurveComplete,
+
+    #[msg("Invalid Signature")]
+    InvalidSignature,
+
+    #[msg("Invalid Message")]
+    InvalidMessage,
+
+    #[msg("Invalid Public Key")]
+    InvalidPubkey,
 }
