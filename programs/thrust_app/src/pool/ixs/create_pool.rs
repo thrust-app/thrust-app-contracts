@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Mint, MintTo, SetAuthority, SyncNative, Token, TokenAccount, Transfer},
@@ -6,11 +6,10 @@ use anchor_spl::{
 use mpl_token_metadata::instructions::CreateMetadataAccountV3Builder;
 use mpl_token_metadata::types::DataV2;
 use mpl_token_metadata::ID as METADATA_PROGRAM_ID;
-use solana_program::program::invoke_signed;
 
 use crate::{
     constants::RESERVE_SEED, constants::TOTAL_SUPPLY, error::ThrustAppError, CreateEvent,
-    MainState, PoolState, TaxType, UserState,
+    MainState, PoolState, UserState,
 };
 
 #[derive(AnchorDeserialize, AnchorSerialize, Clone, Debug)]
@@ -19,7 +18,6 @@ pub struct CreatePoolInput {
     pub mint_symbol: String,
     pub mint_uri: String,
     pub trade_start_time: u64,
-    pub tax_type: TaxType,
 }
 
 pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<()> {
@@ -114,17 +112,12 @@ pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<
         .checked_mul((pool_state.virt_quote_reserves + pool_state.real_quote_reserves) as u128)
         .unwrap();
 
-    let current_timestamp = Clock::get()?.unix_timestamp;
-
-    pool_state.tax_type = input.tax_type;
-    pool_state.tax_start_timestamp = current_timestamp as u64;
-
     emit!(CreateEvent {
         creator: pool_state.owner,
         mint: pool_state.mint,
         base_reserves: pool_state.real_base_reserves + pool_state.virt_base_reserves,
         quote_reserves: pool_state.virt_quote_reserves + pool_state.real_quote_reserves,
-        timestamp: current_timestamp
+        timestamp: Clock::get()?.unix_timestamp
     });
 
     Ok(())
@@ -143,7 +136,7 @@ pub struct ACreatePool<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
 
-    // CHECK: Metaplex metadata account (PDA derived from mint)
+    /// CHECK: Metaplex metadata account (PDA derived from mint)
     #[account(mut)]
     pub metadata_account: UncheckedAccount<'info>,
 
@@ -189,6 +182,7 @@ pub struct ACreatePool<'info> {
     pub reserver_base_ata: Box<Account<'info, TokenAccount>>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Program<'info, Token>,
+    /// CHECK: Ensure valid Metadata Program Account
     pub metadata_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }

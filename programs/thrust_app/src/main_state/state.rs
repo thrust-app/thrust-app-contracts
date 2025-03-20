@@ -13,7 +13,6 @@ pub struct MainState {
     pub referral_reward_fee: u64,
     pub referral_trade_limit: u64,
     pub sol_price: u64,
-    pub verify_signer_pubkey: Pubkey,
 }
 
 impl MainState {
