@@ -165,6 +165,7 @@ pub struct ABuy<'info> {
     )]
     pub main_state: Box<Account<'info, MainState>>,
 
+    /// CHECK: This address is fee recipient address
     #[account(mut, address = main_state.fee_recipient,)]
     pub fee_recipient: AccountInfo<'info>,
 
@@ -180,6 +181,7 @@ pub struct ABuy<'info> {
     )]
     pub user_state: Box<Account<'info, UserState>>,
 
+    /// CHECK: Ensure referrer is valid address
     pub referrer: AccountInfo<'info>,
 
     #[account(

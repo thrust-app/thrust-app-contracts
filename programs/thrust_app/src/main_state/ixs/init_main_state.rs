@@ -31,6 +31,7 @@ pub struct AInitMainState<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
 
+    /// CHECK: This is a public key to verify signed message
     #[account(mut)]
     pub verify_signer_pubkey: AccountInfo<'info>,
 

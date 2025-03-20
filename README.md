@@ -297,8 +297,12 @@ Follow This Installation Guide -> **[https://solana.com/docs/intro/installation]
 ```sh
 ❯ cd thrust_anchor
 ```
+4. Generate solana new wallet for test:
+```sh
+❯ solana-keygen new
+```
 
-4. Install the project dependencies:
+5. Install the project dependencies:
 
 **Using `cargo`** &nbsp; [<img align="center" src="https://img.shields.io/badge/Rust-000000.svg?style={badge_style}&logo=rust&logoColor=white" />](https://www.rust-lang.org/)
 

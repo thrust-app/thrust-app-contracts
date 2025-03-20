@@ -90,6 +90,9 @@ pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
     if pool_state.is_tax_active(current_timestamp) {
         let seller_balance = ctx.accounts.seller_base_ata.amount;
 
+        // will implement later
+        let last_received_time = Clock::get()?.unix_timestamp as u64;
+
         fee_rate = calculate_tax_rate(
             &pool_state.tax_type,
             &user_state,
@@ -208,6 +211,7 @@ pub struct ASell<'info> {
     )]
     pub main_state: Box<Account<'info, MainState>>,
 
+    /// CHECK: This address is fee recipient address
     #[account(mut, address = main_state.fee_recipient,)]
     pub fee_recipient: AccountInfo<'info>,
 
@@ -223,6 +227,7 @@ pub struct ASell<'info> {
     )]
     pub user_state: Box<Account<'info, UserState>>,
 
+    /// CHECK: Ensure referrer is valid address
     pub referrer: AccountInfo<'info>,
 
     #[account(

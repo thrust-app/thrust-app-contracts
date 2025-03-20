@@ -64,6 +64,7 @@ pub struct AUpdateMainState<'info> {
     #[account(mut, address = main_state.owner @ ThrustAppError::Unauthorised)]
     pub owner: Signer<'info>,
 
+    /// CHECK: This is a public key to verify signed message
     #[account(mut)]
     pub verify_signer_pubkey: AccountInfo<'info>,
 
