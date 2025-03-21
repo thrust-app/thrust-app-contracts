@@ -8,7 +8,7 @@ use crate::{
     error::ThrustAppError,
     main_state,
     utils::calculate_trading_fee,
-    CompleteEvent, MainState, PoolState, TradeEvent, UserState,
+    CompleteEvent, MainState, PoolState, TradeEvent, UserState, WaitingRoomState,
 };
 
 pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
@@ -31,6 +31,24 @@ pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
         ThrustAppError::BondingCurveComplete
     );
 
+    // Check Waiting Room state
+    match &mut pool_state.waiting_room_state {
+        WaitingRoomState::Disabled => {
+            // No restrictions, proceed with normal buy
+        }
+        WaitingRoomState::Enabled {
+            closed,
+            wallet_limit_percent,
+            total_buy_volume,
+            participants: _,
+            min_trades: _,
+            max_participants: _,
+            closure_condition: _,
+        } => {
+            // verify user qualification for waiting room
+        }
+    }
+
     let mut fee = calculate_trading_fee(main_state.trading_fee, amount);
     let mut input_amount = amount - fee;
     if (input_amount + pool_state.real_quote_reserves > REAL_SOL_THRESHOLD) {
@@ -44,6 +62,7 @@ pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
     let sol_price = main_state.sol_price;
 
     let trading_volume_usd = input_amount * sol_price / 1_000_000_000;
+    user_state.trade_count += 1;
     user_state.trading_volume_sol += input_amount;
     user_state.trading_volume_usd += trading_volume_usd;
 

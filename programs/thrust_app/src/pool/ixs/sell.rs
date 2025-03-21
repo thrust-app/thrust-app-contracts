@@ -112,6 +112,7 @@ pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
     let sol_price = main_state.sol_price;
 
     let trading_volume_usd = _output_amount * sol_price / 1_000_000_000;
+    user_state.trade_count += 1;
     user_state.trading_volume_sol += _output_amount;
     user_state.trading_volume_usd += trading_volume_usd;
 

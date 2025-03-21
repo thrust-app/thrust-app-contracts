@@ -10,7 +10,7 @@ use solana_program::program::invoke_signed;
 
 use crate::{
     constants::RESERVE_SEED, constants::TOTAL_SUPPLY, error::ThrustAppError, CreateEvent,
-    MainState, PoolState, TaxType, UserState,
+    MainState, PoolState, TaxType, UserState, WaitingRoomConfig, WaitingRoomState,
 };
 
 #[derive(AnchorDeserialize, AnchorSerialize, Clone, Debug)]
@@ -20,6 +20,7 @@ pub struct CreatePoolInput {
     pub mint_uri: String,
     pub trade_start_time: u64,
     pub tax_type: TaxType,
+    pub waiting_room_config: Option<WaitingRoomConfig>,
 }
 
 pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<()> {
@@ -37,6 +38,20 @@ pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<
 
     let pool_state = &mut ctx.accounts.pool_state;
     let user_state = &mut ctx.accounts.user_state;
+
+    // Set waiting room state
+    pool_state.waiting_room_state = match input.waiting_room_config {
+        Some(config) => WaitingRoomState::Enabled {
+            min_trades: config.min_trades,
+            max_participants: config.max_participants,
+            wallet_limit_percent: config.wallet_limit_percent,
+            closure_condition: config.closure_condition,
+            participants: 0,
+            total_buy_volume: 0,
+            closed: false,
+        },
+        None => WaitingRoomState::Disabled,
+    };
 
     // Store referrer to user state, only 1 time store.
     let default_pubkey = Pubkey::default();
