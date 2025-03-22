@@ -285,7 +285,7 @@ pub struct ABuy<'info> {
         bump,
     )]
     pub user_state: Box<Account<'info, UserState>>,
-
+    
     /// CHECK: Ensure referrer is valid address
     pub referrer: AccountInfo<'info>,
 

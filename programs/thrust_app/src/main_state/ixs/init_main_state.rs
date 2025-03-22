@@ -22,7 +22,6 @@ pub fn init_main_state(ctx: Context<AInitMainState>) -> Result<()> {
     state.trading_fee = 1_000; // default: 1%
     state.referral_reward_fee = 10_000; // default: 10% of platform fee = 0.1% of trading fee
     state.referral_trade_limit = 100; // default value is 100. will get reward fee until 100 trades
-    state.verify_signer_pubkey = ctx.accounts.verify_signer_pubkey.key(); // signer pubkey for verify message
     Ok(())
 }
 

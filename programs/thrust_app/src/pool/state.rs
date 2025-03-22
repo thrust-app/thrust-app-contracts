@@ -81,23 +81,8 @@ pub struct PoolState {
 }
 
 impl PoolState {
-    pub const MAX_SIZE: usize = std::mem::size_of::<Self>() + 100;
+    pub const MAX_SIZE: usize = std::mem::size_of::<Self>();
     pub const PREFIX_SEED: &'static [u8] = b"pool";
-
-    pub fn is_tax_active(&self, current_timestamp: u64) -> bool {
-        match &self.tax_type {
-            TaxType::Disabled => false,
-            TaxType::HigherSellTax { duration, .. }
-            | TaxType::DecayTax { duration, .. }
-            | TaxType::FixedTax { duration, .. } => match duration {
-                TaxDuration::Lifetime => true,
-                TaxDuration::FixedDuration(days) => {
-                    let elapsed_days = (current_timestamp - self.tax_start_timestamp) / 86400;
-                    elapsed_days <= *days
-                }
-            },
-        }
-    }
 
     pub fn compute_receivable_amount_on_buy(&mut self, quote_amount: u64) -> u64 {
         let mut amount = quote_amount;
