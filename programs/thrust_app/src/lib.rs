@@ -14,7 +14,7 @@ use main_state::*;
 use pool::*;
 use user::*;
 
-declare_id!("HCJifvSY2uc5GXK4dczRhNvjrMAWjjwZohuRgbvwHa9c");
+declare_id!("2mXgSGzgmd4rdDXfgUm4nbJPa4fUrz9jJEuXfgpUT83B");
 
 #[program]
 pub mod thrust_app {
@@ -39,12 +39,12 @@ pub mod thrust_app {
         pool::create_pool(ctx, input)
     }
 
-    pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
-        pool::buy(ctx, amount)
+    pub fn buy(ctx: Context<ABuy>, input: BuyInput) -> Result<()> {
+        pool::buy(ctx, input)
     }
 
-    pub fn sell(ctx: Context<ASell>, amount: u64) -> Result<()> {
-        pool::sell(ctx, amount)
+    pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
+        pool::sell(ctx, input)
     }
 
     pub fn withdraw(ctx: Context<AWithdrawState>) -> Result<()> {
