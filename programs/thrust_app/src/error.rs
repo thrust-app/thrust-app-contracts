@@ -37,4 +37,10 @@ pub enum ThrustAppError {
 
     #[msg("Invalid Public Key")]
     InvalidPubkey,
+
+    #[msg("Insufficient trades")]
+    InsufficientTrades,
+
+    #[msg("Exceeds buy limit")]
+    ExceedsWalletLimit,
 }

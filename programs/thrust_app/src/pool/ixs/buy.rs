@@ -1,3 +1,4 @@
+use anchor_lang::solana_program::{hash::hash, secp256k1_recover::secp256k1_recover};
 use anchor_lang::{prelude::*, system_program};
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -8,15 +9,41 @@ use crate::{
     error::ThrustAppError,
     main_state,
     utils::calculate_trading_fee,
-    CompleteEvent, MainState, PoolState, TradeEvent, UserState, WaitingRoomState,
+    ClosureCondition, CompleteEvent, MainState, PoolState, TradeEvent, UserState, WaitingRoomState,
 };
 
-pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
+/// Verifies the signed empty message
+fn verify_empty_message(signature: &[u8; 65], signer_pubkey: &Pubkey) -> Result<()> {
+    let message_hash = hash(&[]).to_bytes(); // Hash empty message
+
+    let recovery_id = signature[64];
+    let recovered_pubkey = secp256k1_recover(&message_hash, recovery_id, &signature[..64])
+        .map_err(|_| ThrustAppError::InvalidSignature)?;
+
+    let hashed_pubkey = hash(&recovered_pubkey.to_bytes()).to_bytes();
+    let recovered_solana_pubkey =
+        Pubkey::try_from(hashed_pubkey).map_err(|_| ThrustAppError::InvalidPubkey)?;
+
+    if recovered_solana_pubkey != *signer_pubkey {
+        return Err(ThrustAppError::InvalidSignature.into());
+    }
+
+    Ok(())
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct BuyInput {
+    pub amount: u64,         // Amount of SOL to spend
+    pub signature: [u8; 65], // ECDSA signature of the empty message
+}
+
+pub fn buy(ctx: Context<ABuy>, input: BuyInput) -> Result<()> {
     let main_state = &mut ctx.accounts.main_state;
     let pool_state = &mut ctx.accounts.pool_state;
     let reserve_pda = &mut ctx.accounts.reserve_pda;
     let user_state = &mut ctx.accounts.user_state;
     let current_timestamp = Clock::get()?.unix_timestamp;
+    let amount = input.amount;
 
     require!(
         main_state.initialized.eq(&true),
@@ -31,6 +58,8 @@ pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
         ThrustAppError::BondingCurveComplete
     );
 
+    let start_trade_timestamp = pool_state.start_trade_timestamp;
+
     // Check Waiting Room state
     match &mut pool_state.waiting_room_state {
         WaitingRoomState::Disabled => {
@@ -40,12 +69,69 @@ pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
             closed,
             wallet_limit_percent,
             total_buy_volume,
-            participants: _,
-            min_trades: _,
-            max_participants: _,
-            closure_condition: _,
+            participants,
+            min_trades,
+            max_participants,
+            closure_condition,
         } => {
-            // verify user qualification for waiting room
+            // Check closure conditions if not closed
+            if !*closed {
+                match closure_condition {
+                    ClosureCondition::TimeBased(duration) => {
+                        if current_timestamp > start_trade_timestamp as i64 + *duration {
+                            *closed = true;
+                        }
+                    }
+                    ClosureCondition::ParticipantCount(max) => {
+                        if *participants >= *max {
+                            *closed = true;
+                        }
+                    }
+                    ClosureCondition::BuyVolume(target) => {
+                        if *total_buy_volume >= *target {
+                            *closed = true;
+                        }
+                    }
+                }
+            }
+
+            // If Waiting Room is closed, verify the caller's signature
+            if *closed {
+                verify_empty_message(&input.signature, &main_state.verify_signer_pubkey)?;
+            }
+
+            // Check user qualification (only if Waiting Room is enabled)
+            require!(
+                user_state.trade_count >= (*min_trades).into(),
+                ThrustAppError::InsufficientTrades
+            );
+
+            // Check wallet limit
+            let max_allowed = (main_state.total_token_supply * *wallet_limit_percent as u64) / 100;
+            let user_balance = ctx.accounts.buyer_base_ata.amount;
+            require!(
+                user_balance + amount <= max_allowed,
+                ThrustAppError::ExceedsWalletLimit
+            );
+
+            // Update waiting room state
+            if user_balance == 0 {
+                *participants += 1;
+            }
+            *total_buy_volume += amount;
+
+            // Auto-close if condition met
+            if !*closed {
+                match closure_condition {
+                    ClosureCondition::ParticipantCount(max) if *participants >= *max => {
+                        *closed = true;
+                    }
+                    ClosureCondition::BuyVolume(target) if *total_buy_volume >= *target => {
+                        *closed = true;
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -184,6 +270,7 @@ pub struct ABuy<'info> {
     )]
     pub main_state: Box<Account<'info, MainState>>,
 
+    /// CHECK: This address is fee recipient address
     #[account(mut, address = main_state.fee_recipient,)]
     pub fee_recipient: AccountInfo<'info>,
 
@@ -199,6 +286,7 @@ pub struct ABuy<'info> {
     )]
     pub user_state: Box<Account<'info, UserState>>,
 
+    /// CHECK: Ensure referrer is valid address
     pub referrer: AccountInfo<'info>,
 
     #[account(

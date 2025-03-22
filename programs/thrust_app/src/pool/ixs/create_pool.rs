@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, solana_program::program::invoke_signed};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::{self, Mint, MintTo, SetAuthority, SyncNative, Token, TokenAccount, Transfer},
@@ -6,7 +6,6 @@ use anchor_spl::{
 use mpl_token_metadata::instructions::CreateMetadataAccountV3Builder;
 use mpl_token_metadata::types::DataV2;
 use mpl_token_metadata::ID as METADATA_PROGRAM_ID;
-use solana_program::program::invoke_signed;
 
 use crate::{
     constants::RESERVE_SEED, constants::TOTAL_SUPPLY, error::ThrustAppError, CreateEvent,
@@ -158,7 +157,7 @@ pub struct ACreatePool<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
 
-    // CHECK: Metaplex metadata account (PDA derived from mint)
+    /// CHECK: Metaplex metadata account (PDA derived from mint)
     #[account(mut)]
     pub metadata_account: UncheckedAccount<'info>,
 
@@ -204,6 +203,7 @@ pub struct ACreatePool<'info> {
     pub reserver_base_ata: Box<Account<'info, TokenAccount>>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Program<'info, Token>,
+    /// CHECK: Ensure valid Metadata Program Account
     pub metadata_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
