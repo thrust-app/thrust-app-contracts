@@ -43,8 +43,8 @@ pub mod thrust_app {
         pool::buy(ctx, input)
     }
 
-    pub fn sell(ctx: Context<ASell>, amount: u64) -> Result<()> {
-        pool::sell(ctx, amount)
+    pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
+        pool::sell(ctx, input)
     }
 
     pub fn withdraw(ctx: Context<AWithdrawState>) -> Result<()> {

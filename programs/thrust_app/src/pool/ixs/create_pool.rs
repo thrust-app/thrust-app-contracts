@@ -128,12 +128,17 @@ pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<
         .checked_mul((pool_state.virt_quote_reserves + pool_state.real_quote_reserves) as u128)
         .unwrap();
 
+    let current_timestamp = Clock::get()?.unix_timestamp;
+
+    pool_state.tax_type = input.tax_type;
+    pool_state.tax_start_timestamp = current_timestamp as u64;
+
     emit!(CreateEvent {
         creator: pool_state.owner,
         mint: pool_state.mint,
         base_reserves: pool_state.real_base_reserves + pool_state.virt_base_reserves,
         quote_reserves: pool_state.virt_quote_reserves + pool_state.real_quote_reserves,
-        timestamp: Clock::get()?.unix_timestamp
+        timestamp: current_timestamp
     });
 
     Ok(())

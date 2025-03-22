@@ -43,6 +43,7 @@ pub fn update_main_state(
     state.init_virt_quote_reserves = input
         .init_virt_quote_reserves
         .unwrap_or(state.init_virt_quote_reserves);
+    state.verify_signer_pubkey = ctx.accounts.verify_signer_pubkey.key(); // signer pubkey for verify message
     msg!("Updated mainState");
 
     Ok(())
