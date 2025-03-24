@@ -58,9 +58,15 @@ pub enum WaitingRoomState {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Debug)]
 pub enum ClosureCondition {
-    TimeBased(i64), // Unix timestamp
-    ParticipantCount(u32),
-    BuyVolume(u64),
+    TimeBased {
+        close_timestamp: u64
+    },
+    ParticipantCount {
+        max_participants: u32
+    },
+    BuyVolume {
+        close_volume: u64
+    },
 }
 
 #[account]

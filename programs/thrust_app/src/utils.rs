@@ -1,3 +1,4 @@
+use anchor_lang::solana_program::{hash::hash, secp256k1_recover::secp256k1_recover};
 use anchor_lang::{prelude::*, solana_program::program::invoke};
 use anchor_spl::token::{self, CloseAccount, SyncNative, TokenAccount};
 use crate::{
@@ -133,4 +134,26 @@ pub fn sync_native_amount<'a>(
         token::sync_native(CpiContext::new(token_program, sync_accounts))?;
     }
     Ok(())
+}
+
+pub fn verify_signed_message(signature: &[u8; 65], signer_pubkey: &Pubkey) -> bool {
+    let message_hash = hash(&[]).to_bytes();
+
+    let recovery_id = signature[64];
+    let recovered_pubkey = match secp256k1_recover(&message_hash, recovery_id, &signature[..64]) {
+        Ok(pubkey) => pubkey,
+        Err(_) => return false,
+    };
+
+    let hashed_pubkey = hash(&recovered_pubkey.to_bytes()).to_bytes();
+    let recovered_solana_pubkey = match Pubkey::try_from(hashed_pubkey) {
+        Ok(pubkey) => pubkey,
+        Err(_) => return false,
+    };
+
+    if recovered_solana_pubkey != *signer_pubkey {
+        return false;
+    }
+
+    true
 }

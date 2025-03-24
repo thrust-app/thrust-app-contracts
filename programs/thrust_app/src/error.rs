@@ -32,6 +32,9 @@ pub enum ThrustAppError {
     #[msg("Invalid Signature")]
     InvalidSignature,
 
+    #[msg("Invalid Signature Recovery")]
+    InvalidSignatureRecovery,
+
     #[msg("Invalid Message")]
     InvalidMessage,
 

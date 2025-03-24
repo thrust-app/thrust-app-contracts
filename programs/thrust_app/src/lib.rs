@@ -14,7 +14,7 @@ use main_state::*;
 use pool::*;
 use user::*;
 
-declare_id!("2mXgSGzgmd4rdDXfgUm4nbJPa4fUrz9jJEuXfgpUT83B");
+declare_id!("5LwAeabTKBfiFi5R9mbYwpuU7dbTwSLyHkT8u9hgnVax");
 
 #[program]
 pub mod thrust_app {

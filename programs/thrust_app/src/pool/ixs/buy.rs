@@ -1,4 +1,3 @@
-use anchor_lang::solana_program::{hash::hash, secp256k1_recover::secp256k1_recover};
 use anchor_lang::{prelude::*, system_program};
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -8,28 +7,9 @@ use crate::{
     constants::{FEE_PER_DIV, GRADUATE_FEE, REAL_SOL_THRESHOLD, RESERVE_SEED},
     error::ThrustAppError,
     main_state,
-    utils::calculate_trading_fee,
+    utils::{calculate_trading_fee, verify_signed_message},
     ClosureCondition, CompleteEvent, MainState, PoolState, TradeEvent, UserState, WaitingRoomState,
 };
-
-/// Verifies the signed empty message
-fn verify_empty_message(signature: &[u8; 65], signer_pubkey: &Pubkey) -> Result<()> {
-    let message_hash = hash(&[]).to_bytes(); // Hash empty message
-
-    let recovery_id = signature[64];
-    let recovered_pubkey = secp256k1_recover(&message_hash, recovery_id, &signature[..64])
-        .map_err(|_| ThrustAppError::InvalidSignature)?;
-
-    let hashed_pubkey = hash(&recovered_pubkey.to_bytes()).to_bytes();
-    let recovered_solana_pubkey =
-        Pubkey::try_from(hashed_pubkey).map_err(|_| ThrustAppError::InvalidPubkey)?;
-
-    if recovered_solana_pubkey != *signer_pubkey {
-        return Err(ThrustAppError::InvalidSignature.into());
-    }
-
-    Ok(())
-}
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct BuyInput {
@@ -42,7 +22,7 @@ pub fn buy(ctx: Context<ABuy>, input: BuyInput) -> Result<()> {
     let pool_state = &mut ctx.accounts.pool_state;
     let reserve_pda = &mut ctx.accounts.reserve_pda;
     let user_state = &mut ctx.accounts.user_state;
-    let current_timestamp = Clock::get()?.unix_timestamp;
+    let current_timestamp = Clock::get()?.unix_timestamp as u64;
     let amount = input.amount;
 
     require!(
@@ -50,7 +30,7 @@ pub fn buy(ctx: Context<ABuy>, input: BuyInput) -> Result<()> {
         ThrustAppError::Uninitialized
     );
     require!(
-        current_timestamp as u64 >= pool_state.start_trade_timestamp,
+        current_timestamp >= pool_state.start_trade_timestamp,
         ThrustAppError::TradeStartTimeNotReached
     );
     require!(
@@ -77,18 +57,18 @@ pub fn buy(ctx: Context<ABuy>, input: BuyInput) -> Result<()> {
             // Check closure conditions if not closed
             if !*closed {
                 match closure_condition {
-                    ClosureCondition::TimeBased(duration) => {
-                        if current_timestamp > start_trade_timestamp as i64 + *duration {
+                    ClosureCondition::TimeBased { close_timestamp } => {
+                        if current_timestamp > *close_timestamp {
                             *closed = true;
                         }
                     }
-                    ClosureCondition::ParticipantCount(max) => {
-                        if *participants >= *max {
+                    ClosureCondition::ParticipantCount { max_participants } => {
+                        if *participants >= *max_participants {
                             *closed = true;
                         }
                     }
-                    ClosureCondition::BuyVolume(target) => {
-                        if *total_buy_volume >= *target {
+                    ClosureCondition::BuyVolume { close_volume } => {
+                        if *total_buy_volume >= *close_volume {
                             *closed = true;
                         }
                     }
@@ -97,7 +77,7 @@ pub fn buy(ctx: Context<ABuy>, input: BuyInput) -> Result<()> {
 
             // If Waiting Room is closed, verify the caller's signature
             if *closed {
-                verify_empty_message(&input.signature, &main_state.verify_signer_pubkey)?;
+                verify_signed_message(&input.signature, &main_state.verify_signer_pubkey);
             }
 
             // Check user qualification (only if Waiting Room is enabled)
@@ -123,10 +103,10 @@ pub fn buy(ctx: Context<ABuy>, input: BuyInput) -> Result<()> {
             // Auto-close if condition met
             if !*closed {
                 match closure_condition {
-                    ClosureCondition::ParticipantCount(max) if *participants >= *max => {
+                    ClosureCondition::ParticipantCount { max_participants } if *participants >= *max_participants => {
                         *closed = true;
                     }
-                    ClosureCondition::BuyVolume(target) if *total_buy_volume >= *target => {
+                    ClosureCondition::BuyVolume { close_volume } if *total_buy_volume >= *close_volume => {
                         *closed = true;
                     }
                     _ => {}
