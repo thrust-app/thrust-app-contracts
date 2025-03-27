@@ -1,4 +1,3 @@
-use anchor_lang::solana_program::{hash::hash, secp256k1_recover::secp256k1_recover};
 use anchor_lang::{prelude::*, system_program};
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -8,65 +7,16 @@ use crate::{
     constants::{FEE_PER_DIV, RESERVE_SEED},
     error::ThrustAppError,
     main_state,
-    utils::{calculate_tax_rate, calculate_trading_fee},
+    utils::calculate_trading_fee,
     MainState, PoolState, TradeEvent, UserState,
 };
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
-pub struct SellInput {
-    pub amount: u64,             // Amount of tokens to sell
-    pub signed_message: Vec<u8>, // Signed message containing last_received_time
-    pub signature: [u8; 65],     // ECDSA signature of the message
-}
-
-/// Verifies the signed message and extracts the last_received_time
-fn verify_signed_message(
-    signed_message: &[u8],
-    signature: &[u8; 65],
-    signer_pubkey: &Pubkey,
-) -> Result<u64> {
-    // Hash the message
-    let message_hash = hash(signed_message).to_bytes();
-
-    // Recover public key
-    let recovery_id = signature[64];
-    let recovered_pubkey = secp256k1_recover(&message_hash, recovery_id, &signature[..64])
-        .map_err(|_| ThrustAppError::InvalidSignature)?;
-
-    // Convert 64-byte ECDSA pubkey to 32-byte Solana address
-    let hashed_pubkey = hash(&recovered_pubkey.to_bytes()).to_bytes();
-    let recovered_solana_pubkey =
-        Pubkey::try_from(hashed_pubkey).map_err(|_| ThrustAppError::InvalidPubkey)?;
-
-    // Verify match
-    if recovered_solana_pubkey != *signer_pubkey {
-        return Err(ThrustAppError::InvalidSignature.into());
-    }
-
-    let last_received_time = u64::from_le_bytes(
-        signed_message
-            .get(..8)
-            .ok_or(ThrustAppError::InvalidMessage)?
-            .try_into()
-            .unwrap(),
-    );
-
-    Ok(last_received_time)
-}
-
-pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
+pub fn sell(ctx: Context<ASell>, amount: u64) -> Result<()> {
     let main_state = &mut ctx.accounts.main_state;
     let pool_state = &mut ctx.accounts.pool_state;
     let reserve_pda = &mut ctx.accounts.reserve_pda;
     let user_state = &mut ctx.accounts.user_state;
     let current_timestamp = Clock::get()?.unix_timestamp;
-
-    // Verify the signed message
-    let last_received_time = verify_signed_message(
-        &input.signed_message,
-        &input.signature,
-        &main_state.verify_signer_pubkey, // Predefined public key for verification
-    )?;
 
     require!(
         main_state.initialized.eq(&true),
@@ -81,33 +31,9 @@ pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
         ThrustAppError::BondingCurveComplete
     );
 
-    let input_amount = input.amount;
+    let input_amount = amount;
     let _output_amount = pool_state.compute_receivable_amount_on_sell(input_amount);
-
-    let current_timestamp = Clock::get()?.unix_timestamp as u64;
-
-    let fee_rate;
-    if pool_state.is_tax_active(current_timestamp) {
-        let seller_balance = ctx.accounts.seller_base_ata.amount;
-
-        // will implement later
-        let last_received_time = Clock::get()?.unix_timestamp as u64;
-
-        fee_rate = calculate_tax_rate(
-            &pool_state.tax_type,
-            &user_state,
-            main_state.total_token_supply,
-            _output_amount,
-            current_timestamp,
-            seller_balance,
-            main_state.trading_fee,
-            last_received_time,
-        );
-    } else {
-        fee_rate = main_state.trading_fee;
-    }
-
-    let fee = calculate_trading_fee(fee_rate, _output_amount);
+    let fee = calculate_trading_fee(main_state.trading_fee, _output_amount);
     let output_amount = _output_amount - fee;
     let mut referral_reward = 0;
 
@@ -189,7 +115,7 @@ pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
     emit!(TradeEvent {
         user: ctx.accounts.seller.to_account_info().key(),
         mint: pool_state.mint,
-        token_amount: input_amount,
+        token_amount: amount,
         sol_amount: output_amount,
         base_reserves: pool_state.real_base_reserves + pool_state.virt_base_reserves,
         quote_reserves: pool_state.virt_quote_reserves + pool_state.real_quote_reserves,

@@ -43,7 +43,6 @@ pub fn update_main_state(
     state.init_virt_quote_reserves = input
         .init_virt_quote_reserves
         .unwrap_or(state.init_virt_quote_reserves);
-    state.verify_signer_pubkey = ctx.accounts.verify_signer_pubkey.key(); // signer pubkey for verify message
     msg!("Updated mainState");
 
     Ok(())
@@ -63,11 +62,6 @@ pub fn update_sol_price(ctx: Context<AUpdateMainState>, price: u64) -> Result<()
 pub struct AUpdateMainState<'info> {
     #[account(mut, address = main_state.owner @ ThrustAppError::Unauthorised)]
     pub owner: Signer<'info>,
-
-    /// CHECK: This is a public key to verify signed message
-    #[account(mut)]
-    pub verify_signer_pubkey: AccountInfo<'info>,
-
     #[account(
         mut,
         seeds = [MainState::PREFIX_SEED],
