@@ -89,15 +89,36 @@ pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<
     token::mint_to(cpi_ctx, TOTAL_SUPPLY)?; // Mint 1 token (6 decimals)
 
     // Revoke mint authority
-    let cpi_accounts = SetAuthority {
+    let cpi_accounts_mint = SetAuthority {
         account_or_mint: ctx.accounts.mint.to_account_info(),
         current_authority: ctx.accounts.creator.to_account_info(),
     };
-
-    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+    
+    let cpi_ctx_mint = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(), 
+        cpi_accounts_mint
+    );
+    
     token::set_authority(
-        cpi_ctx,
+        cpi_ctx_mint,
         spl_token::instruction::AuthorityType::MintTokens,
+        None,
+    )?;
+    
+    // Revoke freeze authority
+    let cpi_accounts_freeze = SetAuthority {
+        account_or_mint: ctx.accounts.mint.to_account_info(),
+        current_authority: ctx.accounts.creator.to_account_info(),
+    };
+    
+    let cpi_ctx_freeze = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(), 
+        cpi_accounts_freeze
+    );
+    
+    token::set_authority(
+        cpi_ctx_freeze,
+        spl_token::instruction::AuthorityType::FreezeAccount,
         None,
     )?;
 
