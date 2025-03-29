@@ -1,3 +1,4 @@
+use anchor_lang::solana_program::{hash::hash, secp256k1_recover::secp256k1_recover};
 use anchor_lang::{prelude::*, system_program};
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -7,16 +8,28 @@ use crate::{
     constants::{FEE_PER_DIV, RESERVE_SEED},
     error::ThrustAppError,
     main_state,
-    utils::calculate_trading_fee,
+    utils::{calculate_tax_rate, calculate_trading_fee, verify_signed_message},
     MainState, PoolState, TradeEvent, UserState,
 };
 
-pub fn sell(ctx: Context<ASell>, amount: u64) -> Result<()> {
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct SellInput {
+    pub amount: u64,             // Amount of tokens to sell
+    pub signature: [u8; 65],     // ECDSA signature of the message
+    pub last_received_time: u64,
+}
+
+pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
     let main_state = &mut ctx.accounts.main_state;
     let pool_state = &mut ctx.accounts.pool_state;
     let reserve_pda = &mut ctx.accounts.reserve_pda;
     let user_state = &mut ctx.accounts.user_state;
     let current_timestamp = Clock::get()?.unix_timestamp;
+
+    verify_signed_message(&input.signature, &main_state.verify_signer_pubkey);
+
+    // Verify the signed message
+    let last_received_time = input.last_received_time;
 
     require!(
         main_state.initialized.eq(&true),
@@ -31,9 +44,30 @@ pub fn sell(ctx: Context<ASell>, amount: u64) -> Result<()> {
         ThrustAppError::BondingCurveComplete
     );
 
-    let input_amount = amount;
+    let input_amount = input.amount;
     let _output_amount = pool_state.compute_receivable_amount_on_sell(input_amount);
-    let fee = calculate_trading_fee(main_state.trading_fee, _output_amount);
+
+    let current_timestamp = Clock::get()?.unix_timestamp as u64;
+
+    let fee_rate;
+    if pool_state.is_tax_active(current_timestamp) {
+        let seller_balance = ctx.accounts.seller_base_ata.amount;
+
+        fee_rate = calculate_tax_rate(
+            &pool_state.tax_type,
+            &user_state,
+            main_state.total_token_supply,
+            _output_amount,
+            current_timestamp,
+            seller_balance,
+            main_state.trading_fee,
+            last_received_time,
+        );
+    } else {
+        fee_rate = main_state.trading_fee;
+    }
+
+    let fee = calculate_trading_fee(fee_rate, _output_amount);
     let output_amount = _output_amount - fee;
     let mut referral_reward = 0;
 
@@ -41,6 +75,7 @@ pub fn sell(ctx: Context<ASell>, amount: u64) -> Result<()> {
     let sol_price = main_state.sol_price;
 
     let trading_volume_usd = _output_amount * sol_price / 1_000_000_000;
+    user_state.trade_count += 1;
     user_state.trading_volume_sol += _output_amount;
     user_state.trading_volume_usd += trading_volume_usd;
 
@@ -115,7 +150,7 @@ pub fn sell(ctx: Context<ASell>, amount: u64) -> Result<()> {
     emit!(TradeEvent {
         user: ctx.accounts.seller.to_account_info().key(),
         mint: pool_state.mint,
-        token_amount: amount,
+        token_amount: input_amount,
         sol_amount: output_amount,
         base_reserves: pool_state.real_base_reserves + pool_state.virt_base_reserves,
         quote_reserves: pool_state.virt_quote_reserves + pool_state.real_quote_reserves,

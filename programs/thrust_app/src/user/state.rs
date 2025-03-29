@@ -3,8 +3,9 @@ use anchor_lang::prelude::*;
 #[account]
 pub struct UserState {
     pub user: Pubkey,
-    pub trading_volume_sol:u64,
-    pub trading_volume_usd:u64,
+    pub trading_volume_sol: u64,
+    pub trading_volume_usd: u64,
+    pub trade_count: u64,
     pub referrer: Pubkey,
     pub refer_trade_num: u64,
 }

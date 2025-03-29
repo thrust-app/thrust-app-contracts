@@ -9,7 +9,7 @@ use mpl_token_metadata::ID as METADATA_PROGRAM_ID;
 
 use crate::{
     constants::RESERVE_SEED, constants::TOTAL_SUPPLY, error::ThrustAppError, CreateEvent,
-    MainState, PoolState, UserState,
+    MainState, PoolState, TaxType, UserState, WaitingRoomConfig, WaitingRoomState,
 };
 
 #[derive(AnchorDeserialize, AnchorSerialize, Clone, Debug)]
@@ -18,6 +18,8 @@ pub struct CreatePoolInput {
     pub mint_symbol: String,
     pub mint_uri: String,
     pub trade_start_time: u64,
+    pub tax_type: TaxType,
+    pub waiting_room_config: Option<WaitingRoomConfig>,
 }
 
 pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<()> {
@@ -35,6 +37,20 @@ pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<
 
     let pool_state = &mut ctx.accounts.pool_state;
     let user_state = &mut ctx.accounts.user_state;
+
+    // Set waiting room state
+    pool_state.waiting_room_state = match input.waiting_room_config {
+        Some(config) => WaitingRoomState::Enabled {
+            min_trades: config.min_trades,
+            max_participants: config.max_participants,
+            wallet_limit_percent: config.wallet_limit_percent,
+            closure_condition: config.closure_condition,
+            participants: 0,
+            total_buy_volume: 0,
+            closed: false,
+        },
+        None => WaitingRoomState::Disabled,
+    };
 
     // Store referrer to user state, only 1 time store.
     let default_pubkey = Pubkey::default();
@@ -87,15 +103,36 @@ pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<
     token::mint_to(cpi_ctx, TOTAL_SUPPLY)?; // Mint 1 token (6 decimals)
 
     // Revoke mint authority
-    let cpi_accounts = SetAuthority {
+    let cpi_accounts_mint = SetAuthority {
         account_or_mint: ctx.accounts.mint.to_account_info(),
         current_authority: ctx.accounts.creator.to_account_info(),
     };
-
-    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+    
+    let cpi_ctx_mint = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(), 
+        cpi_accounts_mint
+    );
+    
     token::set_authority(
-        cpi_ctx,
+        cpi_ctx_mint,
         spl_token::instruction::AuthorityType::MintTokens,
+        None,
+    )?;
+    
+    // Revoke freeze authority
+    let cpi_accounts_freeze = SetAuthority {
+        account_or_mint: ctx.accounts.mint.to_account_info(),
+        current_authority: ctx.accounts.creator.to_account_info(),
+    };
+    
+    let cpi_ctx_freeze = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(), 
+        cpi_accounts_freeze
+    );
+    
+    token::set_authority(
+        cpi_ctx_freeze,
+        spl_token::instruction::AuthorityType::FreezeAccount,
         None,
     )?;
 
@@ -112,12 +149,17 @@ pub fn create_pool(ctx: Context<ACreatePool>, input: CreatePoolInput) -> Result<
         .checked_mul((pool_state.virt_quote_reserves + pool_state.real_quote_reserves) as u128)
         .unwrap();
 
+    let current_timestamp = Clock::get()?.unix_timestamp;
+
+    pool_state.tax_type = input.tax_type;
+    pool_state.tax_start_timestamp = current_timestamp as u64;
+
     emit!(CreateEvent {
         creator: pool_state.owner,
         mint: pool_state.mint,
         base_reserves: pool_state.real_base_reserves + pool_state.virt_base_reserves,
         quote_reserves: pool_state.virt_quote_reserves + pool_state.real_quote_reserves,
-        timestamp: Clock::get()?.unix_timestamp
+        timestamp: current_timestamp
     });
 
     Ok(())
