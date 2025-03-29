@@ -7,29 +7,113 @@ use crate::{
     constants::{FEE_PER_DIV, GRADUATE_FEE, REAL_SOL_THRESHOLD, RESERVE_SEED},
     error::ThrustAppError,
     main_state,
-    utils::calculate_trading_fee,
-    CompleteEvent, MainState, PoolState, TradeEvent, UserState,
+    utils::{calculate_trading_fee, verify_signed_message},
+    ClosureCondition, CompleteEvent, MainState, PoolState, TradeEvent, UserState, WaitingRoomState,
 };
 
-pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct BuyInput {
+    pub amount: u64,         // Amount of SOL to spend
+    pub signature: [u8; 65], // ECDSA signature of the empty message
+}
+
+pub fn buy(ctx: Context<ABuy>, input: BuyInput) -> Result<()> {
     let main_state = &mut ctx.accounts.main_state;
     let pool_state = &mut ctx.accounts.pool_state;
     let reserve_pda = &mut ctx.accounts.reserve_pda;
     let user_state = &mut ctx.accounts.user_state;
-    let current_timestamp = Clock::get()?.unix_timestamp;
+    let current_timestamp = Clock::get()?.unix_timestamp as u64;
+    let amount = input.amount;
 
     require!(
         main_state.initialized.eq(&true),
         ThrustAppError::Uninitialized
     );
     require!(
-        current_timestamp as u64 >= pool_state.start_trade_timestamp,
+        current_timestamp >= pool_state.start_trade_timestamp,
         ThrustAppError::TradeStartTimeNotReached
     );
     require!(
         pool_state.complete.eq(&false),
         ThrustAppError::BondingCurveComplete
     );
+
+    let start_trade_timestamp = pool_state.start_trade_timestamp;
+
+    // Check Waiting Room state
+    match &mut pool_state.waiting_room_state {
+        WaitingRoomState::Disabled => {
+            // No restrictions, proceed with normal buy
+        }
+        WaitingRoomState::Enabled {
+            closed,
+            wallet_limit_percent,
+            total_buy_volume,
+            participants,
+            min_trades,
+            max_participants,
+            closure_condition,
+        } => {
+            // Check closure conditions if not closed
+            if !*closed {
+                match closure_condition {
+                    ClosureCondition::TimeBased { close_timestamp } => {
+                        if current_timestamp > *close_timestamp {
+                            *closed = true;
+                        }
+                    }
+                    ClosureCondition::ParticipantCount { max_participants } => {
+                        if *participants >= *max_participants {
+                            *closed = true;
+                        }
+                    }
+                    ClosureCondition::BuyVolume { close_volume } => {
+                        if *total_buy_volume >= *close_volume {
+                            *closed = true;
+                        }
+                    }
+                }
+            }
+
+            // If Waiting Room is closed, verify the caller's signature
+            if *closed {
+                verify_signed_message(&input.signature, &main_state.verify_signer_pubkey);
+            }
+
+            // Check user qualification (only if Waiting Room is enabled)
+            require!(
+                user_state.trade_count >= (*min_trades).into(),
+                ThrustAppError::InsufficientTrades
+            );
+
+            // Check wallet limit
+            let max_allowed = (main_state.total_token_supply * *wallet_limit_percent as u64) / 100;
+            let user_balance = ctx.accounts.buyer_base_ata.amount;
+            require!(
+                user_balance + amount <= max_allowed,
+                ThrustAppError::ExceedsWalletLimit
+            );
+
+            // Update waiting room state
+            if user_balance == 0 {
+                *participants += 1;
+            }
+            *total_buy_volume += amount;
+
+            // Auto-close if condition met
+            if !*closed {
+                match closure_condition {
+                    ClosureCondition::ParticipantCount { max_participants } if *participants >= *max_participants => {
+                        *closed = true;
+                    }
+                    ClosureCondition::BuyVolume { close_volume } if *total_buy_volume >= *close_volume => {
+                        *closed = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
 
     let mut fee = calculate_trading_fee(main_state.trading_fee, amount);
     let mut input_amount = amount - fee;
@@ -44,6 +128,7 @@ pub fn buy(ctx: Context<ABuy>, amount: u64) -> Result<()> {
     let sol_price = main_state.sol_price;
 
     let trading_volume_usd = input_amount * sol_price / 1_000_000_000;
+    user_state.trade_count += 1;
     user_state.trading_volume_sol += input_amount;
     user_state.trading_volume_usd += trading_volume_usd;
 
@@ -165,6 +250,7 @@ pub struct ABuy<'info> {
     )]
     pub main_state: Box<Account<'info, MainState>>,
 
+    /// CHECK: This address is fee recipient address
     #[account(mut, address = main_state.fee_recipient,)]
     pub fee_recipient: AccountInfo<'info>,
 
@@ -180,6 +266,7 @@ pub struct ABuy<'info> {
     )]
     pub user_state: Box<Account<'info, UserState>>,
 
+    /// CHECK: Ensure referrer is valid address
     pub referrer: AccountInfo<'info>,
 
     #[account(

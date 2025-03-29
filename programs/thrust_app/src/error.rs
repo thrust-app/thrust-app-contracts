@@ -32,9 +32,18 @@ pub enum ThrustAppError {
     #[msg("Invalid Signature")]
     InvalidSignature,
 
+    #[msg("Invalid Signature Recovery")]
+    InvalidSignatureRecovery,
+
     #[msg("Invalid Message")]
     InvalidMessage,
 
     #[msg("Invalid Public Key")]
     InvalidPubkey,
+
+    #[msg("Insufficient trades")]
+    InsufficientTrades,
+
+    #[msg("Exceeds buy limit")]
+    ExceedsWalletLimit,
 }

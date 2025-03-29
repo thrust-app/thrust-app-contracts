@@ -34,6 +34,41 @@ pub enum TaxType {
     },
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct WaitingRoomConfig {
+    pub min_trades: u32,
+    pub max_participants: u32,
+    pub wallet_limit_percent: u8,
+    pub closure_condition: ClosureCondition,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Debug)]
+pub enum WaitingRoomState {
+    Disabled,
+    Enabled {
+        min_trades: u32,
+        max_participants: u32,
+        wallet_limit_percent: u8,
+        closure_condition: ClosureCondition,
+        participants: u32,
+        total_buy_volume: u64,
+        closed: bool,
+    },
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Debug)]
+pub enum ClosureCondition {
+    TimeBased {
+        close_timestamp: u64
+    },
+    ParticipantCount {
+        max_participants: u32
+    },
+    BuyVolume {
+        close_volume: u64
+    },
+}
+
 #[account]
 pub struct PoolState {
     pub owner: Pubkey,
@@ -48,6 +83,7 @@ pub struct PoolState {
     pub withdrawn: bool,
     pub tax_type: TaxType,
     pub tax_start_timestamp: u64,
+    pub waiting_room_state: WaitingRoomState,
 }
 
 impl PoolState {

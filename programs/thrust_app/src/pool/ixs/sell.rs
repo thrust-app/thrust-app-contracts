@@ -8,50 +8,15 @@ use crate::{
     constants::{FEE_PER_DIV, RESERVE_SEED},
     error::ThrustAppError,
     main_state,
-    utils::{calculate_tax_rate, calculate_trading_fee},
+    utils::{calculate_tax_rate, calculate_trading_fee, verify_signed_message},
     MainState, PoolState, TradeEvent, UserState,
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct SellInput {
     pub amount: u64,             // Amount of tokens to sell
-    pub signed_message: Vec<u8>, // Signed message containing last_received_time
     pub signature: [u8; 65],     // ECDSA signature of the message
-}
-
-/// Verifies the signed message and extracts the last_received_time
-fn verify_signed_message(
-    signed_message: &[u8],
-    signature: &[u8; 65],
-    signer_pubkey: &Pubkey,
-) -> Result<u64> {
-    // Hash the message
-    let message_hash = hash(signed_message).to_bytes();
-
-    // Recover public key
-    let recovery_id = signature[64];
-    let recovered_pubkey = secp256k1_recover(&message_hash, recovery_id, &signature[..64])
-        .map_err(|_| ThrustAppError::InvalidSignature)?;
-
-    // Convert 64-byte ECDSA pubkey to 32-byte Solana address
-    let hashed_pubkey = hash(&recovered_pubkey.to_bytes()).to_bytes();
-    let recovered_solana_pubkey =
-        Pubkey::try_from(hashed_pubkey).map_err(|_| ThrustAppError::InvalidPubkey)?;
-
-    // Verify match
-    if recovered_solana_pubkey != *signer_pubkey {
-        return Err(ThrustAppError::InvalidSignature.into());
-    }
-
-    let last_received_time = u64::from_le_bytes(
-        signed_message
-            .get(..8)
-            .ok_or(ThrustAppError::InvalidMessage)?
-            .try_into()
-            .unwrap(),
-    );
-
-    Ok(last_received_time)
+    pub last_received_time: u64,
 }
 
 pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
@@ -61,12 +26,10 @@ pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
     let user_state = &mut ctx.accounts.user_state;
     let current_timestamp = Clock::get()?.unix_timestamp;
 
+    verify_signed_message(&input.signature, &main_state.verify_signer_pubkey);
+
     // Verify the signed message
-    let last_received_time = verify_signed_message(
-        &input.signed_message,
-        &input.signature,
-        &main_state.verify_signer_pubkey, // Predefined public key for verification
-    )?;
+    let last_received_time = input.last_received_time;
 
     require!(
         main_state.initialized.eq(&true),
@@ -112,6 +75,7 @@ pub fn sell(ctx: Context<ASell>, input: SellInput) -> Result<()> {
     let sol_price = main_state.sol_price;
 
     let trading_volume_usd = _output_amount * sol_price / 1_000_000_000;
+    user_state.trade_count += 1;
     user_state.trading_volume_sol += _output_amount;
     user_state.trading_volume_usd += trading_volume_usd;
 
@@ -208,6 +172,7 @@ pub struct ASell<'info> {
     )]
     pub main_state: Box<Account<'info, MainState>>,
 
+    /// CHECK: This address is fee recipient address
     #[account(mut, address = main_state.fee_recipient,)]
     pub fee_recipient: AccountInfo<'info>,
 
@@ -223,6 +188,7 @@ pub struct ASell<'info> {
     )]
     pub user_state: Box<Account<'info, UserState>>,
 
+    /// CHECK: Ensure referrer is valid address
     pub referrer: AccountInfo<'info>,
 
     #[account(
